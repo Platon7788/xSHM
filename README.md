@@ -1,4 +1,4 @@
-# XSHM v5.0.0 - Enterprise-Grade Shared Memory Library
+# XSHM v5.0.0 -  Shared Memory Library
 
 🚀 **Высокопроизводительная библиотека для межпроцессного взаимодействия (IPC)** с использованием разделяемой памяти и lock-free кольцевых буферов.
 
@@ -14,6 +14,7 @@
 - ✅ **TOCTOU protection** - защита от атак типа "время проверки - время использования"
 - ✅ **Sequence verification** - проверка целостности данных
 - ✅ **Cross-compiler compatibility** - Embarcadero C++ и Visual Studio
+- ✅ **XSHMessage wrapper** - удобная обертка для произвольных данных
 - ✅ **Enterprise-grade качество** - production-ready код
 
 ## 🚀 Быстрый старт
@@ -150,6 +151,101 @@ on_data_received_sxc(client, [](const MyData* data) {
     }
 });
 ```
+
+## 🚀 XSHMessage - Удобная обертка для произвольных данных
+
+**XSHMessage** - это удобная обертка над XSHM, которая скрывает все ограничения библиотеки и позволяет отправлять **любые данные**:
+
+### Создание сервера и клиента
+```cpp
+#include "xshm.hpp"
+
+// Создание сервера (с конфигурацией по умолчанию)
+auto server = xshm::XSHMessage::create_server("my_service");
+
+// Создание клиента (с конфигурацией по умолчанию)
+auto client = xshm::XSHMessage::connect("my_service");
+
+// Или с кастомной конфигурацией
+xshm::XSHMConfig config;
+config.enable_logging = true;
+config.enable_auto_reconnect = true;
+config.enable_statistics = true;
+config.event_loop_timeout_ms = 0;  // Реальное время
+config.max_batch_size = 1;         // Без батчинга
+
+auto server = xshm::XSHMessage::create_server("my_service", config);
+auto client = xshm::XSHMessage::connect("my_service", config);
+```
+
+### Отправка произвольных данных
+```cpp
+// Отправка vector<uint8_t>
+std::vector<uint8_t> binary_data = {0x01, 0x02, 0x03, 0x04};
+client->send(binary_data);
+
+// Отправка string
+std::string text = "Hello World!";
+client->send(text);
+
+// Отправка raw данных
+const char* raw_data = "Raw binary data";
+client->send(raw_data, strlen(raw_data));
+```
+
+### Получение данных
+```cpp
+// Обработчик сообщений
+server->on_message([](const std::vector<uint8_t>& data) {
+    std::cout << "Received " << data.size() << " bytes" << std::endl;
+    for (uint8_t byte : data) {
+        std::cout << std::hex << (int)byte << " ";
+    }
+    std::cout << std::endl;
+});
+```
+
+### Конфигурация XSHMessage
+```cpp
+xshm::XSHMConfig config;
+
+// === РЕАЛЬНОЕ ВРЕМЯ ===
+config.max_batch_size = 1;                  // БЕЗ БАТЧИНГА - каждое сообщение сразу
+config.event_loop_timeout_ms = 0;           // НЕМЕДЛЕННАЯ обработка (0мс)
+config.connection_timeout_ms = 100;         // Быстрое подключение
+
+// === ПРОИЗВОДИТЕЛЬНОСТЬ ===
+config.min_buffer_size = 64 * 1024;         // 64KB минимум
+config.max_buffer_size = 64 * 1024;         // 64KB максимум
+config.callback_thread_pool_size = 8;       // Оптимальный пул потоков
+
+// === НАДЕЖНОСТЬ ===
+config.enable_auto_reconnect = true;
+config.enable_activity_tracking = true;
+config.enable_performance_counters = true;
+config.enable_sequence_verification = true;
+
+// === БЫСТРАЯ ОБРАБОТКА ===
+config.max_callback_timeout_ms = 1;         // Очень быстрые коллбэки
+config.enable_async_callbacks = true;
+
+// === ПОВТОРЫ ===
+config.max_retry_attempts = 3;              // Меньше попыток
+config.initial_retry_delay_ms = 1;          // Очень быстрый старт
+config.max_retry_delay_ms = 10;             // Минимальная задержка
+
+// Создание с конфигурацией
+auto server = xshm::XSHMessage::create_server("my_service", config);
+auto client = xshm::XSHMessage::connect("my_service", config);
+```
+
+### Преимущества XSHMessage
+- ✅ **Любые данные** - `std::vector<uint8_t>`, `std::string`, `void*`
+- ✅ **Простой API** - всего несколько методов
+- ✅ **Автоматическая сборка** - сообщения собираются автоматически
+- ✅ **Совместимость** - работает с существующим кодом
+- ✅ **Производительность** - использует XSHM под капотом
+- ✅ **Полная конфигурация** - все настройки XSHM доступны
 
 ### Безопасное чтение данных с verification
 ```cpp
@@ -656,4 +752,4 @@ client->send_to_server(data);  // Клиент -> Сервер
 *Версия: XSHM v5.0.0*  
 *Платформа: Windows x64*  
 *Компиляторы: Embarcadero C++ 7.80, Visual Studio 2019+*  
-*Статус: Enterprise Production Ready* ✅
+*Статус: Production Ready* ✅

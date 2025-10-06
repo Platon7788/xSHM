@@ -25,6 +25,7 @@
 
 ### 🔧 Специальные примеры
 - **`batching_demo.cpp`** - Демонстрация batch processing
+- **`xshmessage_example.cpp`** - Пример использования XSHMessage для произвольных данных
 
 ## 🎯 Описание примеров
 
@@ -257,6 +258,58 @@ std::cout << "Reads: " << stats.cxs_reads << std::endl;
 config.enable_statistics = true;
 config.enable_activity_tracking = true;
 config.enable_performance_counters = true;
+```
+
+## 🚀 XSHMessage - Удобная обертка для произвольных данных
+
+### XSHMessage Example
+**Файл**: `xshmessage_example.cpp`
+
+**XSHMessage** - это удобная обертка над XSHM, которая скрывает все ограничения библиотеки и позволяет отправлять **любые данные**:
+
+- ✅ **Произвольные данные** - `std::vector<uint8_t>`, `std::string`, `void*`
+- ✅ **Простой API** - всего несколько методов
+- ✅ **Автоматическая сборка** - сообщения собираются автоматически
+- ✅ **Совместимость** - работает с существующим кодом
+
+```cpp
+// Создание конфигурации
+xshm::XSHMConfig config;
+config.enable_logging = true;
+config.enable_auto_reconnect = true;
+config.enable_statistics = true;
+config.event_loop_timeout_ms = 0;  // Реальное время
+config.max_batch_size = 1;         // Без батчинга
+
+// Создание сервера с конфигурацией
+auto server = xshm::XSHMessage::create_server("my_service", config);
+
+// Обработчик сообщений
+server->on_message([](const std::vector<uint8_t>& data) {
+    std::cout << "Received " << data.size() << " bytes" << std::endl;
+});
+
+// Создание клиента с конфигурацией
+auto client = xshm::XSHMessage::connect("my_service", config);
+
+// Отправка любых данных
+std::vector<uint8_t> binary_data = {0x01, 0x02, 0x03};
+client->send(binary_data);
+
+std::string text = "Hello World!";
+client->send(text);
+
+const char* raw_data = "Raw data";
+client->send(raw_data, strlen(raw_data));
+```
+
+### Компиляция и запуск
+```bash
+# Компиляция
+build_xshmessage_example.bat
+
+# Запуск
+xshmessage_example.exe
 ```
 
 ## 📚 Дополнительная информация

@@ -1901,6 +1901,191 @@ using UltimateSPSCQueue = RingBuffer<T>;
 template<typename T>
 using UltimateDualQueue = DualRingBufferSystem<T>;
 
+// ============================================================================
+// CONVENIENT WRAPPER FOR ARBITRARY DATA
+// ============================================================================
+
+/**
+ * @brief Simple wrapper for sending arbitrary binary data
+ * @details Hides XSHM limitations and provides simple API for any data
+ */
+class XSHMessage {
+private:
+    std::unique_ptr<AsyncXSHM<uint8_t>> channel_;
+    std::vector<uint8_t> receive_buffer_;
+    std::function<void(const std::vector<uint8_t>&)> message_callback_;
+    
+public:
+    /**
+     * @brief Create server instance
+     * @param name Unique name for the shared memory region
+     * @param config Configuration (optional)
+     */
+    static std::unique_ptr<XSHMessage> create_server(std::string name, const XSHMConfig& config = XSHMConfig{}) {
+        auto instance = std::unique_ptr<XSHMessage>(new XSHMessage());
+        instance->channel_ = AsyncXSHM<uint8_t>::create_server(name, 1024, config);
+        instance->setup_callbacks();
+        return instance;
+    }
+    
+    /**
+     * @brief Connect to existing server
+     * @param name Name of the shared memory region
+     * @param config Configuration (optional)
+     */
+    static std::unique_ptr<XSHMessage> connect(std::string name, const XSHMConfig& config = XSHMConfig{}) {
+        auto instance = std::unique_ptr<XSHMessage>(new XSHMessage());
+        instance->channel_ = AsyncXSHM<uint8_t>::connect(name, config);
+        instance->setup_callbacks();
+        return instance;
+    }
+    
+    /**
+     * @brief Send arbitrary binary data
+     * @param data Pointer to data
+     * @param size Size of data in bytes
+     * @return true if successful, false otherwise
+     */
+    bool send(const void* data, size_t size) {
+        if (!channel_) return false;
+        
+        // Send size header (4 bytes)
+        uint32_t size32 = static_cast<uint32_t>(size);
+        if (!send_uint32(size32)) return false;
+        
+        // Send data
+        const uint8_t* ptr = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < size; ++i) {
+            if (!channel_->send_to_client(ptr[i]).get()) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * @brief Send vector of bytes
+     * @param data Vector containing data
+     * @return true if successful, false otherwise
+     */
+    bool send(const std::vector<uint8_t>& data) {
+        return send(data.data(), data.size());
+    }
+    
+    /**
+     * @brief Send string data
+     * @param data String to send
+     * @return true if successful, false otherwise
+     */
+    bool send(const std::string& data) {
+        return send(data.data(), data.size());
+    }
+    
+    /**
+     * @brief Set callback for received messages
+     * @param callback Function to call when message is received
+     */
+    void on_message(std::function<void(const std::vector<uint8_t>&)> callback) {
+        message_callback_ = callback;
+    }
+    
+    /**
+     * @brief Check if connected
+     * @return true if connected, false otherwise
+     */
+    bool is_connected() const {
+        return channel_ && channel_->is_connected();
+    }
+    
+    /**
+     * @brief Get statistics
+     * @return Statistics object
+     */
+    auto get_statistics() const {
+        if (channel_) {
+            return channel_->get_statistics();
+        } else {
+            // Return default statistics
+            typename DualRingBufferSystem<uint8_t>::Statistics stats{};
+            return stats;
+        }
+    }
+    
+private:
+    XSHMessage() = default;
+    
+    void setup_callbacks() {
+        if (!channel_) return;
+        
+        // Use direct method call instead of macro - disable macro temporarily
+        #undef on_data_received_sxc
+        channel_->on_data_received_sxc([this](const uint8_t* data) {
+            if (data) {
+                receive_buffer_.push_back(*data);
+                
+                // Check if we have complete message
+                if (receive_buffer_.size() >= 4) {
+                    uint32_t expected_size = *reinterpret_cast<uint32_t*>(receive_buffer_.data());
+                    if (receive_buffer_.size() >= 4 + expected_size) {
+                        // Complete message received!
+                        std::vector<uint8_t> message(receive_buffer_.begin() + 4, 
+                                                   receive_buffer_.begin() + 4 + expected_size);
+                        if (message_callback_) {
+                            message_callback_(message);
+                        }
+                        receive_buffer_.clear();
+                    }
+                }
+            }
+        });
+        // Re-enable macro
+        #define on_data_received_sxc(api, callback) \
+            (api)->on_data_received_sxc(callback)
+    }
+    
+    bool send_uint32(uint32_t value) {
+        uint8_t bytes[4];
+        bytes[0] = (value >> 0) & 0xFF;
+        bytes[1] = (value >> 8) & 0xFF;
+        bytes[2] = (value >> 16) & 0xFF;
+        bytes[3] = (value >> 24) & 0xFF;
+        
+        for (int i = 0; i < 4; ++i) {
+            if (!channel_->send_to_client(bytes[i]).get()) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
+// ============================================================================
+// CONVENIENT MACROS FOR XSHMessage
+// ============================================================================
+
+// Create message server
+#define XSHM_CREATE_MESSAGE_SERVER(name) \
+    auto server = xshm::XSHMessage::create_server(name)
+
+#define XSHM_CREATE_MESSAGE_SERVER_WITH_CONFIG(name, config) \
+    auto server = xshm::XSHMessage::create_server(name, config)
+
+// Connect to message server
+#define XSHM_CONNECT_MESSAGE(name) \
+    auto client = xshm::XSHMessage::connect(name)
+
+#define XSHM_CONNECT_MESSAGE_WITH_CONFIG(name, config) \
+    auto client = xshm::XSHMessage::connect(name, config)
+
+// Send message
+#define XSHM_SEND_MESSAGE(api, data) \
+    (api)->send(data)
+
+// Receive message
+#define XSHM_ON_MESSAGE(api, callback) \
+    (api)->on_message(callback)
+
 // Restore Visual Studio warnings
 #ifdef _MSC_VER
     #pragma warning(pop)

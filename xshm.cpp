@@ -710,5 +710,11 @@ template class AsyncXSHM<float>;
 template class AsyncXSHM<double>;
 template class AsyncXSHM<char>;
 
+// ============================================================================
+// EXPLICIT INSTANTIATIONS FOR XSHMessage
+// ============================================================================
+
+// XSHMessage uses AsyncXSHM<uint8_t> internally, so we need to ensure it's instantiated
+// (it's already instantiated above, but this makes it explicit for XSHMessage)
 
 } // namespace xshm
