@@ -1,0 +1,108 @@
+[15:46:19] Background Stress Test initialized
+[15:46:19] Starting Background Stress Test...
+[15:46:24] === BACKGROUND STRESS STATISTICS ===
+[15:46:24] Mode: ASYNC (no confirmation)
+[15:46:24] Total Operations: 632
+[15:46:24] Successful: 348 (55.063291%)
+[15:46:24] Failed: 0 (0.000000%)
+[15:46:24] Server Operations: 316
+[15:46:24] Client Operations: 316
+[15:46:24] Async Sent: 632
+[15:46:24] Async Received: 348
+[15:46:24] Sync Sent: 0
+[15:46:24] Sync Received: 0
+[15:46:24] Peak Ops/Second: 0
+[15:46:24] Current Ops/Second: 0
+[15:46:24] Average Ops/Second: 126
+[15:46:24] =====================================
+[15:46:29] === BACKGROUND STRESS STATISTICS ===
+[15:46:29] Mode: ASYNC (no confirmation)
+[15:46:29] Total Operations: 1264
+[15:46:29] Successful: 686 (54.272152%)
+[15:46:29] Failed: 0 (0.000000%)
+[15:46:29] Server Operations: 632
+[15:46:29] Client Operations: 632
+[15:46:29] Async Sent: 1264
+[15:46:29] Async Received: 686
+[15:46:29] Sync Sent: 0
+[15:46:29] Sync Received: 0
+[15:46:29] Peak Ops/Second: 0
+[15:46:29] Current Ops/Second: 0
+[15:46:29] Average Ops/Second: 126
+[15:46:29] =====================================
+[15:46:34] === BACKGROUND STRESS STATISTICS ===
+[15:46:34] Mode: ASYNC (no confirmation)
+[15:46:34] Total Operations: 1894
+[15:46:34] Successful: 1017 (53.695882%)
+[15:46:34] Failed: 0 (0.000000%)
+[15:46:34] Server Operations: 947
+[15:46:34] Client Operations: 947
+[15:46:34] Async Sent: 1894
+[15:46:34] Async Received: 1017
+[15:46:34] Sync Sent: 0
+[15:46:34] Sync Received: 0
+[15:46:34] Peak Ops/Second: 0
+[15:46:34] Current Ops/Second: 0
+[15:46:34] Average Ops/Second: 126
+[15:46:34] =====================================
+[15:46:39] === BACKGROUND STRESS STATISTICS ===
+[15:46:39] Mode: ASYNC (no confirmation)
+[15:46:39] Total Operations: 2526
+[15:46:39] Successful: 1347 (53.325416%)
+[15:46:39] Failed: 0 (0.000000%)
+[15:46:39] Server Operations: 1263
+[15:46:39] Client Operations: 1263
+[15:46:39] Async Sent: 2526
+[15:46:39] Async Received: 1347
+[15:46:39] Sync Sent: 0
+[15:46:39] Sync Received: 0
+[15:46:39] Peak Ops/Second: 0
+[15:46:39] Current Ops/Second: 0
+[15:46:39] Average Ops/Second: 126
+[15:46:39] =====================================
+[15:46:44] === BACKGROUND STRESS STATISTICS ===
+[15:46:44] Mode: ASYNC (no confirmation)
+[15:46:44] Total Operations: 3158
+[15:46:44] Successful: 1688 (53.451552%)
+[15:46:44] Failed: 0 (0.000000%)
+[15:46:44] Server Operations: 1579
+[15:46:44] Client Operations: 1579
+[15:46:44] Async Sent: 3158
+[15:46:44] Async Received: 1688
+[15:46:44] Sync Sent: 0
+[15:46:44] Sync Received: 0
+[15:46:44] Peak Ops/Second: 0
+[15:46:44] Current Ops/Second: 0
+[15:46:44] Average Ops/Second: 126
+[15:46:44] =====================================
+[15:46:49] === BACKGROUND STRESS STATISTICS ===
+[15:46:49] Mode: ASYNC (no confirmation)
+[15:46:49] Total Operations: 3785
+[15:46:49] Successful: 2021 (53.394980%)
+[15:46:49] Failed: 0 (0.000000%)
+[15:46:49] Server Operations: 1893
+[15:46:49] Client Operations: 1892
+[15:46:49] Async Sent: 3785
+[15:46:49] Async Received: 2021
+[15:46:49] Sync Sent: 0
+[15:46:49] Sync Received: 0
+[15:46:49] Peak Ops/Second: 0
+[15:46:49] Current Ops/Second: 0
+[15:46:49] Average Ops/Second: 126
+[15:46:49] =====================================
+[15:46:49] Background Stress Test completed
+[15:46:49] ========================================
+[15:46:49] BACKGROUND STRESS TEST - FINAL REPORT
+[15:46:49] ========================================
+[15:46:49] Mode: ASYNC (no confirmation)
+[15:46:49] Test Duration: 30 seconds
+[15:46:49] Total Operations: 3785
+[15:46:49] Successful: 2021 (53.394980%)
+[15:46:49] Failed: 0 (0.000000%)
+[15:46:49] Async Sent: 3785
+[15:46:49] Async Received: 2021
+[15:46:49] Sync Sent: 0
+[15:46:49] Sync Received: 0
+[15:46:49] Peak Performance: 0 ops/sec
+[15:46:49] Average Performance: 126 ops/sec
+[15:46:49] ========================================

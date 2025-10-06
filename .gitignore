@@ -1,0 +1,25 @@
+# Build outputs
+*.obj
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.exp
+
+# Visual Studio
+*.vcxproj.user
+*.sln.docstates
+.vs/
+
+# Borland C++ Builder
+*.cbproj
+*.cbproj.local
+Win64x/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test outputs
+test/*.obj
+test/*.exe

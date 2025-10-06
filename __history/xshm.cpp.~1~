@@ -1,0 +1,517 @@
+#include "xshm.hpp"
+#include "test_structures.hpp"
+
+namespace xshm {
+
+// ============================================================================
+// UltimateSharedMemory Implementation
+// ============================================================================
+
+UltimateSharedMemory::UltimateSharedMemory(const std::string& name, size_t size, bool create)
+    : ptr_(nullptr), size_(size), name_(name), is_owner_(create) {
+    
+    size_ = next_power_of_2(size);
+    
+    if (create) {
+        hMapFile_ = CreateFileMappingA(
+            INVALID_HANDLE_VALUE,
+            nullptr,
+            PAGE_READWRITE | SEC_COMMIT,
+            0,
+            static_cast<DWORD>(size_),
+            name_.c_str()
+        );
+        if (!hMapFile_) {
+            DWORD error = GetLastError();
+            throw XSHMException("Failed to create shared memory: " + name_ + " (Error: " + std::to_string(error) + ")");
+        }
+        
+        hMutex_ = CreateMutexA(nullptr, FALSE, (name_ + "_mutex").c_str());
+        hEvent_ = CreateEventA(nullptr, FALSE, FALSE, (name_ + "_event").c_str());
+    } else {
+        hMapFile_ = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, name_.c_str());
+        if (!hMapFile_) {
+            DWORD error = GetLastError();
+            throw XSHMException("Failed to open shared memory: " + name_ + " (Error: " + std::to_string(error) + ")");
+        }
+        
+        hMutex_ = OpenMutexA(MUTEX_ALL_ACCESS, FALSE, (name_ + "_mutex").c_str());
+        hEvent_ = OpenEventA(EVENT_ALL_ACCESS, FALSE, (name_ + "_event").c_str());
+    }
+    
+    if (!hMutex_ || !hEvent_) {
+        if (hMapFile_) {
+            CloseHandle(hMapFile_);
+            hMapFile_ = nullptr;
+        }
+        if (hMutex_) {
+            CloseHandle(hMutex_);
+            hMutex_ = nullptr;
+        }
+        if (hEvent_) {
+            CloseHandle(hEvent_);
+            hEvent_ = nullptr;
+        }
+        DWORD error = GetLastError();
+        throw XSHMException("Failed to create/open synchronization objects (Error: " + std::to_string(error) + ")");
+    }
+    
+    ptr_ = MapViewOfFile(hMapFile_, FILE_MAP_ALL_ACCESS, 0, 0, size_);
+    if (!ptr_) {
+        DWORD error = GetLastError();
+        CloseHandle(hMapFile_);
+        CloseHandle(hMutex_);
+        CloseHandle(hEvent_);
+        hMapFile_ = nullptr;
+        hMutex_ = nullptr;
+        hEvent_ = nullptr;
+        throw XSHMException("Failed to map shared memory view (Error: " + std::to_string(error) + ")");
+    }
+}
+
+UltimateSharedMemory::~UltimateSharedMemory() {
+    if (ptr_) {
+        UnmapViewOfFile(ptr_);
+        CloseHandle(hMapFile_);
+        CloseHandle(hMutex_);
+        CloseHandle(hEvent_);
+    }
+}
+
+UltimateSharedMemory::UltimateSharedMemory(UltimateSharedMemory&& other) noexcept
+    : ptr_(other.ptr_), size_(other.size_), name_(std::move(other.name_)), is_owner_(other.is_owner_) {
+    hMapFile_ = other.hMapFile_;
+    hMutex_ = other.hMutex_;
+    hEvent_ = other.hEvent_;
+    other.hMapFile_ = nullptr;
+    other.hMutex_ = nullptr;
+    other.hEvent_ = nullptr;
+    other.ptr_ = nullptr;
+    other.size_ = 0;
+    other.is_owner_ = false;
+}
+
+UltimateSharedMemory& UltimateSharedMemory::operator=(UltimateSharedMemory&& other) noexcept {
+    if (this != &other) {
+        this->~UltimateSharedMemory();
+        new (this) UltimateSharedMemory(std::move(other));
+    }
+    return *this;
+}
+
+void UltimateSharedMemory::lock() {
+    if (WaitForSingleObject(hMutex_, INFINITE) != WAIT_OBJECT_0) {
+        throw XSHMException("Failed to acquire mutex");
+    }
+}
+
+void UltimateSharedMemory::unlock() {
+    ReleaseMutex(hMutex_);
+}
+
+void UltimateSharedMemory::signal() {
+    SetEvent(hEvent_);
+}
+
+void UltimateSharedMemory::wait(std::chrono::milliseconds timeout) {
+    DWORD result = WaitForSingleObject(hEvent_, timeout.count() ? static_cast<DWORD>(timeout.count()) : INFINITE);
+    if (result == WAIT_TIMEOUT) {
+        throw XSHMException("Wait timeout");
+    } else if (result != WAIT_OBJECT_0) {
+        throw XSHMException("Wait failed");
+    }
+}
+
+constexpr size_t UltimateSharedMemory::next_power_of_2(size_t n) noexcept {
+    if (n == 0) return 1;
+    --n;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    return n + 1;
+}
+
+// ============================================================================
+// RingBuffer Implementation
+// ============================================================================
+
+template<typename T>
+RingBuffer<T>::RingBuffer(void* memory, BufferSize capacity) 
+    : capacity_(next_power_of_2(capacity))
+    , mask_(capacity_ - 1)
+    , data_(static_cast<T*>(memory)) {
+    
+    if (capacity_ < MIN_BUFFER_SIZE || capacity_ > MAX_BUFFER_SIZE) {
+        throw XSHMException("Invalid buffer size: " + std::to_string(capacity));
+    }
+    
+    // Инициализируем память нулями
+    std::memset(data_, 0, capacity_ * sizeof(T));
+    
+    // Сбрасываем статистику
+    reset_statistics();
+}
+
+template<typename T>
+bool RingBuffer<T>::try_write(const T& item) noexcept {
+    const BufferIndex current_write = write_pos_.load(XSHM_RELAXED);
+    const BufferIndex next_write = (current_write + 1) & mask_;
+    const BufferIndex current_read = read_pos_.load(XSHM_ACQUIRE);
+    
+    // Проверяем, не заполнен ли буфер
+    if (next_write == current_read) {
+        failed_writes_.fetch_add(1, XSHM_RELAXED);
+        return false;
+    }
+    
+    // Копируем данные
+    data_[current_write] = item;
+    
+    // Обновляем позицию записи
+    write_pos_.store(next_write, XSHM_RELEASE);
+    total_writes_.fetch_add(1, XSHM_RELAXED);
+    
+    return true;
+}
+
+template<typename T>
+bool RingBuffer<T>::try_write(T&& item) noexcept {
+    const BufferIndex current_write = write_pos_.load(XSHM_RELAXED);
+    const BufferIndex next_write = (current_write + 1) & mask_;
+    const BufferIndex current_read = read_pos_.load(XSHM_ACQUIRE);
+    
+    // Проверяем, не заполнен ли буфер
+    if (next_write == current_read) {
+        failed_writes_.fetch_add(1, XSHM_RELAXED);
+        return false;
+    }
+    
+    // Перемещаем данные
+    data_[current_write] = std::move(item);
+    
+    // Обновляем позицию записи
+    write_pos_.store(next_write, XSHM_RELEASE);
+    total_writes_.fetch_add(1, XSHM_RELAXED);
+    
+    return true;
+}
+
+template<typename T>
+template<typename... Args>
+bool RingBuffer<T>::try_emplace(Args&&... args) noexcept {
+    const BufferIndex current_write = write_pos_.load(XSHM_RELAXED);
+    const BufferIndex next_write = (current_write + 1) & mask_;
+    const BufferIndex current_read = read_pos_.load(XSHM_ACQUIRE);
+    
+    // Проверяем, не заполнен ли буфер
+    if (next_write == current_read) {
+        failed_writes_.fetch_add(1, XSHM_RELAXED);
+        return false;
+    }
+    
+    // Создаем объект на месте
+    new (&data_[current_write]) T(std::forward<Args>(args)...);
+    
+    // Обновляем позицию записи
+    write_pos_.store(next_write, XSHM_RELEASE);
+    total_writes_.fetch_add(1, XSHM_RELAXED);
+    
+    return true;
+}
+
+template<typename T>
+T* RingBuffer<T>::try_read() noexcept {
+    const BufferIndex current_read = read_pos_.load(XSHM_RELAXED);
+    const BufferIndex current_write = write_pos_.load(XSHM_ACQUIRE);
+    
+    // Проверяем, не пуст ли буфер
+    if (current_read == current_write) {
+        failed_reads_.fetch_add(1, XSHM_RELAXED);
+        return nullptr;
+    }
+    
+    // Возвращаем указатель на данные
+    return &data_[current_read];
+}
+
+template<typename T>
+void RingBuffer<T>::commit_read() noexcept {
+    const BufferIndex current_read = read_pos_.load(XSHM_RELAXED);
+    const BufferIndex next_read = (current_read + 1) & mask_;
+    
+    read_pos_.store(next_read, XSHM_RELEASE);
+    total_reads_.fetch_add(1, XSHM_RELAXED);
+}
+
+template<typename T>
+bool RingBuffer<T>::empty() const noexcept {
+    return write_pos_.load(XSHM_ACQUIRE) == read_pos_.load(XSHM_ACQUIRE);
+}
+
+template<typename T>
+bool RingBuffer<T>::full() const noexcept {
+    const BufferIndex current_write = write_pos_.load(XSHM_ACQUIRE);
+    const BufferIndex current_read = read_pos_.load(XSHM_ACQUIRE);
+    const BufferIndex next_write = (current_write + 1) & mask_;
+    return next_write == current_read;
+}
+
+template<typename T>
+BufferSize RingBuffer<T>::size() const noexcept {
+    const BufferIndex current_write = write_pos_.load(XSHM_ACQUIRE);
+    const BufferIndex current_read = read_pos_.load(XSHM_ACQUIRE);
+    return (current_write - current_read) & mask_;
+}
+
+template<typename T>
+BufferSize RingBuffer<T>::capacity() const noexcept {
+    return capacity_ - 1;  // Один слот всегда свободен для различения полного/пустого состояния
+}
+
+template<typename T>
+uint64_t RingBuffer<T>::total_writes() const noexcept {
+    return total_writes_.load(XSHM_RELAXED);
+}
+
+template<typename T>
+uint64_t RingBuffer<T>::total_reads() const noexcept {
+    return total_reads_.load(XSHM_RELAXED);
+}
+
+template<typename T>
+uint64_t RingBuffer<T>::failed_writes() const noexcept {
+    return failed_writes_.load(XSHM_RELAXED);
+}
+
+template<typename T>
+uint64_t RingBuffer<T>::failed_reads() const noexcept {
+    return failed_reads_.load(XSHM_RELAXED);
+}
+
+template<typename T>
+void RingBuffer<T>::reset_statistics() noexcept {
+    total_writes_.store(0, XSHM_RELAXED);
+    total_reads_.store(0, XSHM_RELAXED);
+    failed_writes_.store(0, XSHM_RELAXED);
+    failed_reads_.store(0, XSHM_RELAXED);
+}
+
+template<typename T>
+constexpr BufferSize RingBuffer<T>::next_power_of_2(BufferSize n) noexcept {
+    if (n == 0) return 1;
+    --n;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    return n + 1;
+}
+
+template<typename T>
+BufferIndex RingBuffer<T>::next_write_pos() const noexcept {
+    return (write_pos_.load(XSHM_RELAXED) + 1) & mask_;
+}
+
+template<typename T>
+BufferIndex RingBuffer<T>::next_read_pos() const noexcept {
+    return (read_pos_.load(XSHM_RELAXED) + 1) & mask_;
+}
+
+// ============================================================================
+// DualRingBufferSystem Implementation
+// ============================================================================
+
+template<typename T>
+DualRingBufferSystem<T>::DualRingBufferSystem(std::string name, BufferSize buffer_size, bool is_server)
+    : name_(std::move(name)) {
+    
+    // Вычисляем размер разделяемой памяти
+    const size_t header_size = sizeof(SharedMemoryHeader);
+    const size_t buffer_metadata_size = sizeof(RingBuffer<T>) * 2;
+    const size_t buffer_data_size = buffer_size * sizeof(T) * 2;
+    const size_t total_size = header_size + buffer_metadata_size + buffer_data_size;
+    
+    // Создаем или открываем разделяемую память
+    shm_ = std::make_unique<UltimateSharedMemory>(name, total_size, is_server);
+    layout_ = static_cast<SharedLayout*>(shm_->get());
+    
+    if (is_server) {
+        // Инициализируем заголовок
+        layout_->header.magic_number = MAGIC_NUMBER;
+        layout_->header.version = PROTOCOL_VERSION;
+        layout_->header.sxc_buffer_size = buffer_size;
+        layout_->header.cxs_buffer_size = buffer_size;
+        
+        // Создаем кольцевые буферы в разделяемой памяти
+        char* sxc_data = layout_->sxc_data;
+        char* cxs_data = sxc_data + buffer_size * sizeof(T);
+        
+        new (&layout_->sxc_buffer) RingBuffer<T>(sxc_data, buffer_size);
+        new (&layout_->cxs_buffer) RingBuffer<T>(cxs_data, buffer_size);
+        
+        // Создаем объекты синхронизации
+        hMutex_ = CreateMutexA(nullptr, FALSE, (name + "_mutex").c_str());
+        hEventSxC_ = CreateEventA(nullptr, FALSE, FALSE, (name + "_event_sxc").c_str());
+        hEventCxS_ = CreateEventA(nullptr, FALSE, FALSE, (name + "_event_cxs").c_str());
+        
+        if (!hMutex_ || !hEventSxC_ || !hEventCxS_) {
+            DWORD error = GetLastError();
+            throw XSHMException("Failed to create synchronization objects (Error: " + std::to_string(error) + ")");
+        }
+        
+        // Отмечаем сервер как подключенный
+        layout_->header.server_connected.store(1, XSHM_RELEASE);
+    } else {
+        // Открываем существующие объекты синхронизации
+        hMutex_ = OpenMutexA(MUTEX_ALL_ACCESS, FALSE, (name + "_mutex").c_str());
+        hEventSxC_ = OpenEventA(EVENT_ALL_ACCESS, FALSE, (name + "_event_sxc").c_str());
+        hEventCxS_ = OpenEventA(EVENT_ALL_ACCESS, FALSE, (name + "_event_cxs").c_str());
+        
+        if (!hMutex_ || !hEventSxC_ || !hEventCxS_) {
+            DWORD error = GetLastError();
+            throw XSHMException("Failed to open synchronization objects (Error: " + std::to_string(error) + ")");
+        }
+        
+        // Проверяем магическое число
+        if (layout_->header.magic_number != MAGIC_NUMBER) {
+            throw XSHMException("Invalid magic number in shared memory");
+        }
+        
+        if (layout_->header.version != PROTOCOL_VERSION) {
+            throw XSHMException("Unsupported protocol version: " + std::to_string(layout_->header.version));
+        }
+        
+        // Отмечаем клиент как подключенный
+        layout_->header.client_connected.store(1, XSHM_RELEASE);
+    }
+    
+    // Получаем указатели на буферы
+    sxc_buffer_ = &layout_->sxc_buffer;
+    cxs_buffer_ = &layout_->cxs_buffer;
+}
+
+template<typename T>
+DualRingBufferSystem<T>::DualRingBufferSystem(std::string name) 
+    : DualRingBufferSystem(std::move(name), 0, false) {
+}
+
+template<typename T>
+DualRingBufferSystem<T>::~DualRingBufferSystem() {
+    if (hMutex_) CloseHandle(hMutex_);
+    if (hEventSxC_) CloseHandle(hEventSxC_);
+    if (hEventCxS_) CloseHandle(hEventCxS_);
+}
+
+template<typename T>
+void DualRingBufferSystem<T>::signal_sxc() noexcept {
+    if (hEventSxC_) {
+        SetEvent(hEventSxC_);
+    }
+}
+
+template<typename T>
+void DualRingBufferSystem<T>::signal_cxs() noexcept {
+    if (hEventCxS_) {
+        SetEvent(hEventCxS_);
+    }
+}
+
+
+template<typename T>
+typename DualRingBufferSystem<T>::Statistics DualRingBufferSystem<T>::get_statistics() const noexcept {
+    Statistics stats;
+    stats.sxc_writes = sxc_buffer_->total_writes();
+    stats.sxc_reads = sxc_buffer_->total_reads();
+    stats.sxc_failed_writes = sxc_buffer_->failed_writes();
+    stats.sxc_failed_reads = sxc_buffer_->failed_reads();
+    
+    stats.cxs_writes = cxs_buffer_->total_writes();
+    stats.cxs_reads = cxs_buffer_->total_reads();
+    stats.cxs_failed_writes = cxs_buffer_->failed_writes();
+    stats.cxs_failed_reads = cxs_buffer_->failed_reads();
+    
+    return stats;
+}
+
+template<typename T>
+void DualRingBufferSystem<T>::reset_statistics() noexcept {
+    sxc_buffer_->reset_statistics();
+    cxs_buffer_->reset_statistics();
+}
+
+template<typename T>
+bool DualRingBufferSystem<T>::is_server_connected() const noexcept {
+    return layout_->header.server_connected.load(XSHM_ACQUIRE) != 0;
+}
+
+template<typename T>
+bool DualRingBufferSystem<T>::is_client_connected() const noexcept {
+    return layout_->header.client_connected.load(XSHM_ACQUIRE) != 0;
+}
+
+template<typename T>
+bool DualRingBufferSystem<T>::is_connected() const noexcept {
+    return this->is_server_connected() && this->is_client_connected();
+}
+
+// ============================================================================
+// Explicit Template Instantiations
+// ============================================================================
+
+// Создаем явные инстанцирования для часто используемых типов
+template class RingBuffer<uint8_t>;      // unsigned char
+template class RingBuffer<uint16_t>;
+template class RingBuffer<uint32_t>;
+template class RingBuffer<uint64_t>;
+template class RingBuffer<int8_t>;       // signed char
+template class RingBuffer<int16_t>;
+template class RingBuffer<int32_t>;
+template class RingBuffer<int64_t>;
+template class RingBuffer<float>;
+template class RingBuffer<double>;
+template class RingBuffer<char>;
+
+template class DualRingBufferSystem<uint8_t>;      // unsigned char
+template class DualRingBufferSystem<uint16_t>;
+template class DualRingBufferSystem<uint32_t>;
+template class DualRingBufferSystem<uint64_t>;
+template class DualRingBufferSystem<int8_t>;       // signed char
+template class DualRingBufferSystem<int16_t>;
+template class DualRingBufferSystem<int32_t>;
+template class DualRingBufferSystem<int64_t>;
+template class DualRingBufferSystem<float>;
+template class DualRingBufferSystem<double>;
+template class DualRingBufferSystem<char>;
+
+template class AsyncXSHM<uint8_t>;      // unsigned char
+template class AsyncXSHM<uint16_t>;
+template class AsyncXSHM<uint32_t>;
+template class AsyncXSHM<uint64_t>;
+template class AsyncXSHM<int8_t>;       // signed char
+template class AsyncXSHM<int16_t>;
+template class AsyncXSHM<int32_t>;
+template class AsyncXSHM<int64_t>;
+template class AsyncXSHM<float>;
+template class AsyncXSHM<double>;
+template class AsyncXSHM<char>;
+
+// Инстанциации для тестовых структур
+
+template class DualRingBufferSystem<StressData>;
+template class DualRingBufferSystem<IntegrityData>;
+template class AsyncXSHM<StressData>;
+template class AsyncXSHM<IntegrityData>;
+
+// Инстанциации для comprehensive_performance_report
+template class DualRingBufferSystem<SmallData>;
+template class DualRingBufferSystem<MediumData>;
+template class DualRingBufferSystem<LargeData>;
+template class AsyncXSHM<SmallData>;
+template class AsyncXSHM<MediumData>;
+template class AsyncXSHM<LargeData>;
+
+} // namespace xshm

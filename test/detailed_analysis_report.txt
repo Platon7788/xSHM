@@ -1,0 +1,58 @@
+XSHM Comprehensive Analysis - Detailed Report
+=============================================
+Test started: 15:26:52
+
+[15:26:52] Starting Comprehensive XSHM Analysis...
+[15:26:52] All servers created successfully
+[15:26:53] All clients connected successfully
+[15:26:53] Starting Comprehensive Analysis with Stress & Batching Tests...
+
+--- STATS AT T+10s ---
+Total Operations: 655
+Total Success: 1010
+Total Failures: 0
+Total Exceptions: 0
+
+
+--- STATS AT T+20s ---
+Total Operations: 1315
+Total Success: 1984
+Total Failures: 0
+Total Exceptions: 0
+
+
+--- STATS AT T+30s ---
+Total Operations: 1966
+Total Success: 2939
+Total Failures: 0
+Total Exceptions: 0
+
+[15:27:23] Normal Load Test completed
+[15:27:23] Resetting counters for ULTRA-STRESS test...
+[15:27:23] Starting ULTRA-STRESS server loop...
+[15:27:23] Starting ULTRA-STRESS client loop...
+[15:27:25] Ultra-Stress Test Stats - Total: 260 | Success: 260 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 130
+[15:27:27] Ultra-Stress Test Stats - Total: 518 | Success: 518 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:29] Ultra-Stress Test Stats - Total: 776 | Success: 776 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:31] Ultra-Stress Test Stats - Total: 1034 | Success: 1034 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:33] Ultra-Stress Test Stats - Total: 1292 | Success: 1292 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:35] Ultra-Stress Test Stats - Total: 1550 | Success: 1550 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:37] Ultra-Stress Test Stats - Total: 1810 | Success: 1810 | Failures: 0 | Peak Ops/Sec: 0 | Avg Ops/Sec: 129
+[15:27:39] Ultra-Stress Test Stats - Total: 2070 | Success: 2070 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:41] Ultra-Stress Test Stats - Total: 2330 | Success: 2330 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:43] Ultra-Stress Test Stats - Total: 2588 | Success: 2588 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:45] Ultra-Stress Test Stats - Total: 2846 | Success: 2846 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:47] Ultra-Stress Test Stats - Total: 3106 | Success: 3106 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:49] Ultra-Stress Test Stats - Total: 3364 | Success: 3364 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:51] Ultra-Stress Test Stats - Total: 3624 | Success: 3624 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 129
+[15:27:53] Ultra-Stress Test Stats - Total: 3859 | Success: 3859 | Failures: 0 | Peak Ops/Sec: 1000 | Avg Ops/Sec: 128
+[15:27:53] ULTRA-STRESS Test completed
+[15:27:53] Resetting counters for batching test...
+[15:27:53] Starting batching server loop...
+[15:27:53] Starting batching client loop...
+[15:27:56] Batching Test Stats - Total: 3466 | Success: 3466 | Failures: 0 | Batches: 385 | Max Ops/Sec: 660
+[15:27:59] Batching Test Stats - Total: 6934 | Success: 6934 | Failures: 0 | Batches: 770 | Max Ops/Sec: 660
+[15:28:02] Batching Test Stats - Total: 10426 | Success: 10426 | Failures: 0 | Batches: 1158 | Max Ops/Sec: 660
+[15:28:05] Batching Test Stats - Total: 13918 | Success: 13918 | Failures: 0 | Batches: 1546 | Max Ops/Sec: 660
+[15:28:08] Batching Test Stats - Total: 17314 | Success: 17314 | Failures: 0 | Batches: 1923 | Max Ops/Sec: 660
+[15:28:08] Batching Test completed
