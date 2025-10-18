@@ -1,0 +1,4 @@
+﻿  shm_core.c
+  shm_events.c
+  shm_ringbuffer.c
+  xSHM.vcxproj -> D:\GitHub\VsProjects\xSHM\xSHM\x64\Release\xSHM.lib

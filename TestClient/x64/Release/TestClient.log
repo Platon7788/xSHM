@@ -1,0 +1,30 @@
+﻿  TestClient.c
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(49,9): error C2059: синтаксическая ошибка: {
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(49,9): error C2065: err: необъявленный идентификатор
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(49,9): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(49,75): error C2059: синтаксическая ошибка: !=
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(49,89): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(55,12): error C2143: синтаксическая ошибка: отсутствие ")" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(55,12): error C2143: синтаксическая ошибка: отсутствие "{" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(55,12): error C2059: синтаксическая ошибка: строка
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(55,60): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,5): error C2059: синтаксическая ошибка: for
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,23): error C2143: синтаксическая ошибка: отсутствие "{" перед "<"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,23): error C2059: синтаксическая ошибка: <
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,31): error C2143: синтаксическая ошибка: отсутствие "{" перед "++"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,31): error C2059: синтаксическая ошибка: ++
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(59,33): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(97,12): error C2143: синтаксическая ошибка: отсутствие ")" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(97,12): error C2143: синтаксическая ошибка: отсутствие "{" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(97,12): error C2059: синтаксическая ошибка: строка
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(97,41): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(98,5): error C2371: shm_client_disconnect: переопределение; различные базовые типы
+      D:\GitHub\VsProjects\xSHM\include\shm_ipc.h(59,18):
+       см. объявление "shm_client_disconnect"
+  
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(100,12): error C2143: синтаксическая ошибка: отсутствие ")" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(100,12): error C2143: синтаксическая ошибка: отсутствие "{" перед "строка"
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(100,12): error C2059: синтаксическая ошибка: строка
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(100,45): error C2059: синтаксическая ошибка: )
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(101,5): error C2059: синтаксическая ошибка: return
+D:\GitHub\VsProjects\xSHM\TestClient\TestClient.c(102,1): error C2059: синтаксическая ошибка: }
