@@ -1,759 +1,275 @@
-# XSHM v5.0.0 - Shared Memory Library
+# xSHM - High-Performance Shared Memory IPC Library
 
-🚀 **Высокопроизводительная библиотека для межпроцессного взаимодействия (IPC)** с использованием разделяемой памяти и lock-free кольцевых буферов.
+[![License: Free](https://img.shields.io/badge/License-Free-green.svg)](https://github.com/Platon/xSHM)
 
-## ✨ Ключевые особенности v5.0.0
+**Author:** Platon  
+**Language:** C (Windows-native)  
+**Platforms:** Windows 10/11 (x86/x64, cross-architecture compatible)  
+**Status:** Production-ready, actively maintained  
 
-- ✅ **Lock-free архитектура** - максимальная производительность без блокировок
-- ✅ **Двунаправленная связь** - server ↔ client с независимыми буферами
-- ✅ **Асинхронный и синхронный режимы** - гибкость использования
-- ✅ **Thread-safe операции** - атомарные операции и CAS loops
-- ✅ **Автоматическое переподключение** - устойчивость к сбоям
-- ✅ **Batch processing** - групповая обработка для оптимизации
-- ✅ **Детальная статистика** - мониторинг производительности
-- ✅ **TOCTOU protection** - защита от атак типа "время проверки - время использования"
-- ✅ **Sequence verification** - проверка целостности данных
-- ✅ **Cross-compiler compatibility** - Embarcadero C++ и Visual Studio
-- ✅ **XSHMessage wrapper** - удобная обертка для произвольных данных
-- ✅ **Enterprise-grade качество** - production-ready код
+xSHM is a lightweight, high-performance shared memory IPC library for Windows. It uses zero-copy overwriting ring buffers for bidirectional communication between processes, with automatic connection detection and event-driven notifications. Optimized for low-latency, high-throughput scenarios like real-time data exchange.
 
-## 🚀 Быстрый старт
+## Описание / Description
 
-### 1. Создание сервера
-```cpp
-#include "xshm.hpp"
+### English
+A cross-architecture (x86/x64) shared memory IPC library with lock-free overwriting ring buffers, automatic client detection via active readers, and asynchronous events (including CONNECT/DISCONNECT). Supports zero-copy messaging up to 64KB per message, with bidirectional channels and easy macros for rapid prototyping. Ideal for inter-process communication in games, simulations, or embedded systems on Windows.
 
-// Конфигурация
-xshm::XSHMConfig config;
-config.enable_logging = true;
-config.enable_auto_reconnect = true;
-config.enable_batch_processing = true;
-config.enable_statistics = true;
+### Русский
+Библиотека межпроцессного взаимодействия (IPC) через разделяемую память для Windows с кросс-архитектурной поддержкой (x86/x64). Использует безблокирующие overwriting-кольцевые буферы, автоматическое обнаружение подключения клиента через active_readers и асинхронные события (включая CONNECT/DISCONNECT). Поддерживает zero-copy сообщения до 64 КБ, двунаправленные каналы и удобные макросы для быстрой разработки. Идеально для межпроцессного обмена данными в играх, симуляциях или встраиваемых системах на Windows.
 
-// Создаем сервер
-auto server = xshm::AsyncXSHM<MyData>::create_server("my_app", 1024, config);
+## Features
 
-// Регистрируем обработчик получения данных от клиента
-on_data_received_cxs(server, [](const MyData* data) {
-    if (data) {
-        std::cout << "Сервер получил: " << data->message << std::endl;
-    }
-});
+- **Zero-Copy Overwriting Buffers**: Always succeeds on write (overwrites old data if full), no blocking.
+- **Automatic Connection Management**: Detects client connect/disconnect via ring buffer active readers—no manual handshakes.
+- **Event-Driven Architecture**: Async callbacks for data availability, connect/disconnect, errors; background listener with configurable timeout.
+- **Bidirectional Communication**: Separate TX/RX rings for server<->client.
+- **Cross-Architecture**: Seamless x86/x64 mixed-mode (same machine).
+- **High Performance**: Sub-ms latency, GB/s throughput; lock-free with atomics and events.
+- **Easy API**: Macros for structs, default configs; blocking/non-blocking reads.
+- **Thread-Safe**: Safe multi-threaded access per process.
 
-// Отправляем данные клиенту (асинхронно)
-MyData data;
-data.message = "Hello from server!";
-server->send_to_client(data);
-```
+## Architecture
 
-### 2. Подключение клиента
-```cpp
-// Подключаемся к серверу
-auto client = xshm::AsyncXSHM<MyData>::connect("my_app", config);
+### Core Components
 
-// Регистрируем обработчик получения данных от сервера
-on_data_received_sxc(client, [](const MyData* data) {
-    if (data) {
-        std::cout << "Клиент получил: " << data->message << std::endl;
-    }
-});
+1. **Ring Buffer** (`shm_ringbuffer.c/h`)
+   - Overwriting circular buffer (power-of-2 size).
+   - Atomic positions (Interlocked ops); supports multiple readers.
+   - Header with active_readers for connection detection.
+   - Events for data/space (data always signaled on write).
 
-// Отправляем данные серверу (асинхронно)
-MyData data;
-data.message = "Hello from client!";
-client->send_to_server(data);
-```
+2. **Event System** (`shm_events.c/h`)
+   - Windows Events for signaling (DATA_AVAILABLE, SPACE_AVAILABLE, DISCONNECT, ERROR, CONNECT).
+   - Callback registration with auto-starting listener thread (100ms timeout).
+   - Periodic status checks on server for connect/disconnect.
 
-## 📚 API Reference
+3. **IPC Layer** (`shm_ipc.c/h`)
+   - Server creates rings/events; client opens with retries.
+   - Auto-detection: Server monitors tx_ring->active_readers.
+   - Send ignores if not connected; receive always attempts.
 
-### Создание и подключение
-```cpp
-// Создание сервера
-auto server = xshm::AsyncXSHM<T>::create_server(name, buffer_size, config);
+## Building
 
-// Подключение клиента
-auto client = xshm::AsyncXSHM<T>::connect(name, config);
-```
-
-### Конфигурация (XSHMConfig)
-```cpp
-xshm::XSHMConfig config;
-
-// Основные параметры
-config.min_buffer_size = 16;                    // Минимальный размер буфера
-config.max_buffer_size = 1024 * 1024;           // Максимальный размер буфера (1MB)
-config.event_loop_timeout_ms = 1000;            // Таймаут event loop
-config.connection_timeout_ms = 5000;            // Таймаут подключения
-config.max_retry_attempts = 3;                  // Максимальное количество попыток
-config.initial_retry_delay_ms = 50;             // Начальная задержка retry
-
-// Производительность
-config.max_batch_size = 10;                     // Максимальный размер batch
-config.max_callback_timeout_ms = 10;            // Таймаут callback'ов
-config.enable_batch_processing = true;          // Включить batch processing
-config.enable_async_callbacks = true;           // Асинхронные callback'и
-config.callback_thread_pool_size = 4;           // Размер thread pool
-
-// Логирование и мониторинг
-config.enable_logging = false;                  // Включить логирование
-config.enable_sequence_verification = true;    // Sequence-based verification
-config.enable_activity_tracking = true;         // Activity timestamp tracking
-config.enable_statistics = true;                // Performance statistics
-config.max_cas_spins = 16;                      // Максимум CAS spins
-config.cas_yield_threshold = 16;                // CAS yield threshold
-
-// Автоматическое восстановление
-config.enable_auto_reconnect = true;            // Автоматическое переподключение
-```
-
-### Отправка данных
-
-#### Асинхронная отправка (рекомендуется)
-```cpp
-// Отправка без ожидания подтверждения - максимальная производительность
-server->send_to_client(data);     // Сервер -> Клиент
-client->send_to_server(data);     // Клиент -> Сервер
-
-// С MOVE семантикой для производительности
-server->send_to_client(std::move(data));
-client->send_to_server(std::move(data));
-```
-
-#### Синхронная отправка (с ожиданием подтверждения)
-```cpp
-// Отправка с ожиданием подтверждения - надежность
-auto future1 = server->send_to_client(data);
-if (future1.get()) {
-    std::cout << "Данные успешно отправлены!" << std::endl;
-}
-
-auto future2 = client->send_to_server(data);
-if (future2.get()) {
-    std::cout << "Данные успешно отправлены!" << std::endl;
-}
-```
-
-### Получение данных
-```cpp
-// Обработчик получения данных от клиента (для сервера)
-on_data_received_cxs(server, [](const MyData* data) {
-    if (data) {
-        std::cout << "Сервер получил: " << data->message << std::endl;
-        // Данные автоматически извлекаются из буфера
-    }
-});
-
-// Обработчик получения данных от сервера (для клиента)
-on_data_received_sxc(client, [](const MyData* data) {
-    if (data) {
-        std::cout << "Клиент получил: " << data->message << std::endl;
-        // Данные автоматически извлекаются из буфера
-    }
-});
-```
-
-## 🚀 XSHMessage - Удобная обертка для произвольных данных
-
-**XSHMessage** - это удобная обертка над XSHM, которая скрывает все ограничения библиотеки и позволяет отправлять **любые данные**:
-
-### Создание сервера и клиента
-```cpp
-#include "xshm.hpp"
-
-// Создание сервера (с конфигурацией по умолчанию)
-auto server = xshm::XSHMessage::create_server("my_service");
-
-// Создание клиента (с конфигурацией по умолчанию)
-auto client = xshm::XSHMessage::connect("my_service");
-
-// Или с кастомной конфигурацией
-xshm::XSHMConfig config;
-config.enable_logging = true;
-config.enable_auto_reconnect = true;
-config.enable_statistics = true;
-config.event_loop_timeout_ms = 0;  // Реальное время
-config.max_batch_size = 1;         // Без батчинга
-
-auto server = xshm::XSHMessage::create_server("my_service", config);
-auto client = xshm::XSHMessage::connect("my_service", config);
-```
-
-### Отправка произвольных данных
-```cpp
-// Отправка vector<uint8_t>
-std::vector<uint8_t> binary_data = {0x01, 0x02, 0x03, 0x04};
-client->send(binary_data);
-
-// Отправка string
-std::string text = "Hello World!";
-client->send(text);
-
-// Отправка raw данных
-const char* raw_data = "Raw binary data";
-client->send(raw_data, strlen(raw_data));
-```
-
-### Получение данных
-```cpp
-// Обработчик сообщений
-server->on_message([](const std::vector<uint8_t>& data) {
-    std::cout << "Received " << data.size() << " bytes" << std::endl;
-    for (uint8_t byte : data) {
-        std::cout << std::hex << (int)byte << " ";
-    }
-    std::cout << std::endl;
-});
-```
-
-### Конфигурация XSHMessage
-```cpp
-xshm::XSHMConfig config;
-
-// === РЕАЛЬНОЕ ВРЕМЯ ===
-config.max_batch_size = 1;                  // БЕЗ БАТЧИНГА - каждое сообщение сразу
-config.event_loop_timeout_ms = 0;           // НЕМЕДЛЕННАЯ обработка (0мс)
-config.connection_timeout_ms = 100;         // Быстрое подключение
-
-// === ПРОИЗВОДИТЕЛЬНОСТЬ ===
-config.min_buffer_size = 64 * 1024;         // 64KB минимум
-config.max_buffer_size = 64 * 1024;         // 64KB максимум
-config.callback_thread_pool_size = 8;       // Оптимальный пул потоков
-
-// === НАДЕЖНОСТЬ ===
-config.enable_auto_reconnect = true;
-config.enable_activity_tracking = true;
-config.enable_performance_counters = true;
-config.enable_sequence_verification = true;
-
-// === БЫСТРАЯ ОБРАБОТКА ===
-config.max_callback_timeout_ms = 1;         // Очень быстрые коллбэки
-config.enable_async_callbacks = true;
-
-// === ПОВТОРЫ ===
-config.max_retry_attempts = 3;              // Меньше попыток
-config.initial_retry_delay_ms = 1;          // Очень быстрый старт
-config.max_retry_delay_ms = 10;             // Минимальная задержка
-
-// Создание с конфигурацией
-auto server = xshm::XSHMessage::create_server("my_service", config);
-auto client = xshm::XSHMessage::connect("my_service", config);
-```
-
-### Преимущества XSHMessage
-- ✅ **Любые данные** - `std::vector<uint8_t>`, `std::string`, `void*`
-- ✅ **Простой API** - всего несколько методов
-- ✅ **Автоматическая сборка** - сообщения собираются автоматически
-- ✅ **Совместимость** - работает с существующим кодом
-- ✅ **Производительность** - использует XSHM под капотом
-- ✅ **Полная конфигурация** - все настройки XSHM доступны
-
-### Безопасное чтение данных с verification
-```cpp
-// Получаем прямой доступ к буферу
-auto& buffer = client->client_from_server(); // или server->server_from_client()
-
-// Безопасное чтение с sequence verification
-uint64_t sequence;
-MyData* data = buffer.try_read(sequence);
-if (data) {
-    // Обрабатываем данные
-    std::cout << "Получено: " << data->message << std::endl;
-    
-    // Безопасное подтверждение чтения с verification
-    if (buffer.commit_read(sequence)) {
-        std::cout << "Чтение успешно подтверждено" << std::endl;
-    } else {
-        std::cout << "Ошибка verification - данные могли измениться" << std::endl;
-    }
-} else {
-    // Буфер пуст
-    std::cout << "Нет новых данных" << std::endl;
-}
-```
-
-### Обработчики событий
-```cpp
-// Обработчики отправки данных
-on_data_sent_sxc(server, [](const MyData* data) {
-    std::cout << "Сервер отправил клиенту: " << data->message << std::endl;
-});
-
-on_data_sent_cxs(client, [](const MyData* data) {
-    std::cout << "Клиент отправил серверу: " << data->message << std::endl;
-});
-
-// Обработчики подключения
-on_connection_established(server, []() {
-    std::cout << "✅ Сервер готов к взаимодействию!" << std::endl;
-});
-
-on_connection_established(client, []() {
-    std::cout << "✅ Клиент подключен!" << std::endl;
-});
-
-// Обработчик потери соединения
-on_connection_failed(client, []() {
-    std::cout << "❌ Не удалось подключиться к серверу" << std::endl;
-});
-```
-
-### Проверка статуса
-```cpp
-// Проверка подключения
-if (server->is_connected()) {
-    // Сервер подключен
-}
-
-if (client->is_connected()) {
-    // Клиент подключен
-}
-
-// Проверка роли
-if (server->is_server()) {
-    // Это сервер
-}
-
-if (client->is_client()) {
-    // Это клиент
-}
-```
-
-### Статистика и мониторинг
-```cpp
-// Получение статистики
-auto stats = server->get_statistics();
-std::cout << "SxC writes: " << stats.sxc_writes << std::endl;
-std::cout << "CxS reads: " << stats.cxs_reads << std::endl;
-std::cout << "Failed writes: " << stats.failed_writes << std::endl;
-std::cout << "Failed reads: " << stats.failed_reads << std::endl;
-
-// Сброс статистики
-server->reset_statistics();
-
-// Проверка состояния буферов
-auto& sxc_buffer = server->server_to_client();
-auto& cxs_buffer = server->server_from_client();
-
-if (sxc_buffer.empty()) {
-    std::cout << "SxC буфер пуст" << std::endl;
-}
-
-if (cxs_buffer.full()) {
-    std::cout << "CxS буфер полон" << std::endl;
-}
-
-std::cout << "Размер SxC буфера: " << sxc_buffer.size() << std::endl;
-std::cout << "Емкость CxS буфера: " << cxs_buffer.capacity() << std::endl;
-```
-
-## 🛠️ Компиляция
-
-### Требования
+### Prerequisites
 - Windows 10/11
-- Visual Studio 2019+ или Embarcadero C++ Builder
-- C++17 или выше
+- Visual Studio 2019/2022 (C/C++ tools)
+- CMake 3.15+ (optional, for future builds)
 
-### Требования к типам данных
-```cpp
-// Ваши структуры данных должны быть:
-struct MyData {
-    // 1. Trivially copyable (можно копировать побайтово)
-    int id;
-    char message[64];
-    double value;
-    
-    // 2. Nothrow destructible (деструктор не бросает исключений)
-    ~MyData() = default;  // или не объявлять деструктор
-    
-    // 3. Constructible (можно создать объект)
-    MyData() = default;   // или конструктор по умолчанию
-};
+### Build Scripts
+Run in project root:
 
-// НЕ используйте:
-// - std::string (не trivially copyable)
-// - std::vector (не trivially copyable)
-// - Указатели на динамическую память
-// - Виртуальные функции
+#### All Architectures
+```batch
+build_all.bat
 ```
 
-### Компиляция библиотеки
-```bash
-# Visual Studio
-cl /O2 /std:c++17 /EHsc /c xshm.cpp
-
-# Embarcadero C++
-bcc64x -c xshm.cpp -o xshm.obj
+#### x64 Only
+```batch
+build_x64.bat
 ```
 
-### Компиляция приложения
-```bash
-# Visual Studio
-cl /O2 /std:c++17 /EHsc your_app.cpp xshm.obj
-
-# Embarcadero C++
-bcc64x your_app.cpp xshm.obj -o your_app.exe
+#### x86 Only
+```batch
+build_x86.bat
 ```
 
-## 📊 Производительность
+Outputs: `build_x64/Release/` and `build_x86/Release/` (DLLs, EXEs, libs).
 
-### Характеристики
-- **Пропускная способность**: > 1000 сообщений/сек
-- **Задержка**: < 1мс на сообщение
-- **Надежность**: 99.9% успешной доставки
-- **Память**: Эффективное использование разделяемой памяти
-- **CPU**: Минимальная нагрузка благодаря lock-free алгоритмам
-- **Thread safety**: Полная thread-safety с atomic операциями
+## Quick Start
 
-### Режимы работы
+### Server Setup
+```c
+#include "shm_ipc.h"
 
-#### ASYNC Mode (Асинхронный)
-- **Отправка**: Без ожидания подтверждения
-- **Производительность**: Максимальная (~126 ops/sec)
-- **Надежность**: ~53% успешных операций
-- **Использование**: Высокоскоростная передача данных
+shm_ring_config_t config = SHM_DEFAULT_CONFIG();  // 4MB rings, blocking reads
+shm_server_t* server = shm_server_create("test_channel", &config);
+if (!server) { /* error */ }
 
-#### SYNC Mode (Синхронный)
-- **Отправка**: С ожиданием подтверждения
-- **Производительность**: Сниженная (~80-100 ops/sec)
-- **Надежность**: ~95-100% успешных операций
-- **Использование**: Критически важные данные
-
-### Поддерживаемые типы данных
-```cpp
-// Встроенные типы (автоматически поддерживаются)
-xshm::AsyncXSHM<uint8_t>     // unsigned char
-xshm::AsyncXSHM<uint16_t>    // unsigned short
-xshm::AsyncXSHM<uint32_t>    // unsigned int
-xshm::AsyncXSHM<uint64_t>    // unsigned long long
-xshm::AsyncXSHM<int8_t>      // signed char
-xshm::AsyncXSHM<int16_t>     // signed short
-xshm::AsyncXSHM<int32_t>     // signed int
-xshm::AsyncXSHM<int64_t>     // signed long long
-xshm::AsyncXSHM<float>       // float
-xshm::AsyncXSHM<double>      // double
-xshm::AsyncXSHM<char>        // char
-
-// Пользовательские структуры (должны быть trivially copyable)
-struct MyMessage {
-    uint64_t id;
-    char text[256];
-    double timestamp;
-    uint8_t data[1024];
-};
-xshm::AsyncXSHM<MyMessage>   // Ваша структура
+// Auto-start listener on register
+shm_error_t err = shm_server_register_callback(server, my_handler, NULL);
 ```
 
-## 🔧 Примеры использования
+### Client Connection
+```c
+shm_client_t* client = shm_client_connect("test_channel");
+if (!client) { /* error */ }
 
-### Пример 1: Простой чат
-```cpp
-// Определяем структуру сообщения
-struct ChatMessage {
-    uint64_t id;
-    char sender[32];
-    char text[256];
-    uint64_t timestamp;
-};
-
-// Конфигурация
-xshm::XSHMConfig config;
-config.enable_logging = true;
-config.enable_auto_reconnect = true;
-config.enable_statistics = true;
-
-// Сервер
-auto server = xshm::AsyncXSHM<ChatMessage>::create_server("chat", 1024, config);
-
-on_connection_established(server, []() {
-    std::cout << "✅ Сервер готов к работе!" << std::endl;
-});
-
-on_data_received_cxs(server, [](const ChatMessage* msg) {
-    if (msg) {
-        std::cout << "[" << msg->sender << "]: " << msg->text << std::endl;
-    }
-});
-
-// Клиент
-auto client = xshm::AsyncXSHM<ChatMessage>::connect("chat", config);
-
-on_connection_established(client, []() {
-    std::cout << "✅ Клиент подключен!" << std::endl;
-});
-
-on_data_received_sxc(client, [](const ChatMessage* msg) {
-    if (msg) {
-        std::cout << "[" << msg->sender << "]: " << msg->text << std::endl;
-    }
-});
-
-// Отправка сообщения
-ChatMessage msg;
-msg.id = 1;
-strcpy(msg.sender, "User");
-strcpy(msg.text, "Hello!");
-msg.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
-
-client->send_to_server(msg);  // Клиент -> Сервер
-server->send_to_client(msg);  // Сервер -> Клиент
+// Register with auto-start
+shm_client_register_callback(client, my_handler, NULL);
 ```
 
-### Пример 2: Передача файлов с мониторингом
-```cpp
-// Конфигурация с мониторингом
-xshm::XSHMConfig config;
-config.enable_logging = true;
-config.enable_statistics = true;
-config.enable_activity_tracking = true;
-config.max_batch_size = 20;
+### Sending/Receiving
+```c
+// Send (always succeeds if size <= 64KB and connected for server)
+char msg[] = "Hello!";
+shm_server_send(server, msg, sizeof(msg));  // Server to client
+shm_client_send(client, msg, sizeof(msg));  // Client to server
 
-// Сервер
-auto server = xshm::AsyncXSHM<FileChunk>::create_server("file_transfer", 65536, config);
-
-on_data_received_cxs(server, [](const FileChunk* chunk) {
-    if (chunk) {
-        // Сохраняем чанк файла
-        saveFileChunk(*chunk);
-        
-        // Обновляем статистику
-        auto stats = server->get_statistics();
-        std::cout << "Получено чанков: " << stats.cxs_reads << std::endl;
-    }
-});
+// Receive (blocks if empty and blocking=true)
+uint8_t buf[1024]; uint32_t sz = sizeof(buf);
+shm_error_t res = shm_server_receive(server, buf, &sz);  // From client
+if (res == SHM_SUCCESS) { /* process buf[0..sz] */ }
 ```
 
-### Пример 3: Безопасное чтение с verification
-```cpp
-// Безопасное чтение с sequence verification
-auto& buffer = client->client_from_server();
-
-uint64_t sequence;
-MyData* data = buffer.try_read(sequence);
-if (data) {
-    // Обрабатываем данные
-    processData(*data);
-    
-    // Безопасное подтверждение чтения
-    if (buffer.commit_read(sequence)) {
-        std::cout << "Данные успешно обработаны" << std::endl;
-    } else {
-        std::cout << "Ошибка verification - данные изменились" << std::endl;
+### Event Handler
+```c
+void my_handler(void* ud, shm_event_type_t type, const void* data, uint32_t sz) {
+    switch (type) {
+        case SHM_EVENT_CONNECT: printf("Client connected!\n"); break;
+        case SHM_EVENT_DISCONNECT: printf("Client disconnected!\n"); break;
+        case SHM_EVENT_DATA_AVAILABLE: /* poll receive */ break;
+        case SHM_EVENT_ERROR: printf("Error!\n"); break;
     }
 }
 ```
 
-## 🧪 Тестирование
+### Structs (Macros)
+```c
+typedef struct { uint32_t id; char text[256]; } my_struct_t;
+my_struct_t s = { .id = 42 };
+SHM_SEND_STRUCT(server, &s);  // Server/client generic
 
-### Комплексный тест производительности
-```bash
-# Переход в папку тестов
-cd test
-
-# Запуск интерактивного меню тестов
-run_all_mode_tests.bat
+my_struct_t r;
+uint32_t rsz = sizeof(r);
+SHM_RECV_STRUCT(server, &r);  // Updates rsz
 ```
 
-### Доступные тесты:
-- **Background Stress Test** - ASYNC/SYNC режимы с детальной статистикой
-- **Comprehensive Mode Test** - Сравнительный анализ режимов
-- **Silent Stress Test** - Максимально быстрый тест без вывода
-- **Comprehensive Analysis** - 3-фазный тест (Normal/Stress/Batching)
-
-### Ожидаемые результаты:
-- **ASYNC Mode**: ~126 ops/sec, ~53% успешных операций
-- **SYNC Mode**: ~80-100 ops/sec, ~95-100% успешных операций
-- **Надежность**: > 99% успешной доставки в SYNC режиме
-- **Память**: Эффективное использование разделяемой памяти
-
-## 🛡️ Надежность и безопасность
-
-- ✅ **Thread-safe операции** - атомарные операции и CAS loops
-- ✅ **TOCTOU protection** - защита от Time-of-Check-Time-of-Use атак
-- ✅ **Sequence verification** - проверка целостности данных
-- ✅ **Overflow protection** - защита от переполнения
-- ✅ **Exception safety** - корректная обработка исключений
-- ✅ **RAII resource management** - автоматическое управление ресурсами
-- ✅ **Graceful degradation** - корректная работа при потере соединения
-- ✅ **Automatic reconnection** - автоматическое восстановление соединения
-- ✅ **Input validation** - валидация входных данных
-- ✅ **Memory safety** - отсутствие утечек памяти
-
-## 🔧 Troubleshooting
-
-### Частые проблемы и решения
-
-**❌ Ошибка компиляции: "undefined symbol"**
-```bash
-# Решение: Убедитесь, что xshm.cpp скомпилирован
-cl /c /std:c++17 xshm.cpp
-cl /std:c++17 your_app.cpp xshm.obj
+### Cleanup
+```c
+shm_server_destroy(server);
+shm_client_disconnect(client);
 ```
 
-**❌ Ошибка: "Failed to create shared memory"**
-```cpp
-// Решение: Проверьте права доступа и уникальность имени
-auto server = xshm::AsyncXSHM<MyData>::create_server("unique_name_123", 1024, config);
+## API Reference
+
+### Config
+```c
+typedef struct {
+    uint32_t size;        // Power-of-2, e.g., 4*1024*1024 (4MB)
+    uint32_t max_readers; // Max active readers
+    bool blocking;        // Block on empty read?
+    uint32_t timeout_ms;  // Read timeout
+} shm_ring_config_t;
+#define SHM_DEFAULT_CONFIG() ((shm_ring_config_t){.size=4*1024*1024, .max_readers=4, .blocking=true, .timeout_ms=5000})
 ```
 
-**❌ Ошибка: "Invalid magic number"**
-```cpp
-// Решение: Убедитесь, что сервер запущен перед клиентом
-// Или используйте разные имена для разных приложений
+### Server API
+```c
+shm_server_t* shm_server_create(const char* name, const shm_ring_config_t* config);
+void shm_server_destroy(shm_server_t* server);
+shm_error_t shm_server_send(shm_server_t* server, const void* data, uint32_t size);  // Ignores if !connected
+shm_error_t shm_server_receive(shm_server_t* server, void* data, uint32_t* size);   // Blocks if empty
+shm_error_t shm_server_register_callback(shm_server_t* server, shm_event_callback_t cb, void* ud);
 ```
 
-**❌ Данные не передаются**
-```cpp
-// Решение: Проверьте, что обработчики зарегистрированы
-on_data_received_sxc(client, [](const MyData* data) {
-    if (data) {  // ВАЖНО: проверяйте data на nullptr
-        // Обработка данных
-    }
-});
+### Client API
+```c
+shm_client_t* shm_client_connect(const char* name);  // Retries ~500ms
+void shm_client_disconnect(shm_client_t* client);
+shm_error_t shm_client_send(shm_client_t* client, const void* data, uint32_t size);
+shm_error_t shm_client_receive(shm_client_t* client, void* data, uint32_t* size);
+shm_error_t shm_client_register_callback(shm_client_t* client, shm_event_callback_t cb, void* ud);
 ```
 
-**❌ Высокое потребление CPU**
-```cpp
-// Решение: Настройте конфигурацию для оптимизации
-xshm::XSHMConfig config;
-config.max_cas_spins = 8;           // Уменьшите CAS spins
-config.cas_yield_threshold = 8;     // Уменьшите yield threshold
-config.enable_batch_processing = true;  // Включите batch processing
+### Events
+```c
+typedef enum {
+    SHM_EVENT_DATA_AVAILABLE = 0,
+    SHM_EVENT_SPACE_AVAILABLE = 1,  // Less relevant for overwriting
+    SHM_EVENT_DISCONNECT = 2,
+    SHM_EVENT_ERROR = 3,
+    SHM_EVENT_CONNECT = 4
+} shm_event_type_t;
+typedef void (*shm_event_callback_t)(void* ud, shm_event_type_t type, const void* data, uint32_t sz);
 ```
 
-## 💡 Лучшие практики
-
-### ✅ Рекомендуется
-```cpp
-// 1. Всегда используйте безопасный API с sequence verification
-uint64_t sequence;
-MyData* data = buffer.try_read(sequence);
-if (data) {
-    processData(*data);
-    buffer.commit_read(sequence);  // ✅ Безопасно
-}
-
-// 2. Настройте конфигурацию под ваши нужды
-xshm::XSHMConfig config;
-config.enable_logging = true;           // Для отладки
-config.enable_auto_reconnect = true;   // Для надежности
-config.enable_statistics = true;       // Для мониторинга
-
-// 3. Используйте MOVE семантику для производительности
-MyData data = createData();
-server->send_to_client(std::move(data));  // ✅ Быстро
-
-// 4. Регистрируйте обработчики до отправки данных
-auto client = xshm::AsyncXSHM<MyData>::connect("app", config);
-on_data_received_sxc(client, handler);  // ✅ Сначала обработчик
-// ... потом отправка данных
-
-// 5. Используйте уникальные имена для разных приложений
-auto server1 = xshm::AsyncXSHM<Data1>::create_server("app1", 1024, config1);
-auto server2 = xshm::AsyncXSHM<Data2>::create_server("app2", 1024, config2);
-
-// 6. Проверяйте подключение перед отправкой
-if (client->is_connected()) {
-    client->send_to_server(data);
-}
-
-// 7. Мониторьте статистику для оптимизации
-auto stats = server->get_statistics();
-if (stats.failed_writes > 0) {
-    std::cout << "Предупреждение: " << stats.failed_writes << " неудачных записей" << std::endl;
-}
+### Errors
+```c
+typedef enum {
+    SHM_SUCCESS = 0,
+    SHM_ERROR_INVALID_PARAM = -1,
+    SHM_ERROR_MEMORY = -2,
+    SHM_ERROR_TIMEOUT = -3,
+    SHM_ERROR_EMPTY = -4,      // Non-blocking read failed
+    SHM_ERROR_EXISTS = -5,
+    SHM_ERROR_NOT_FOUND = -6,
+    SHM_ERROR_ACCESS = -7
+} shm_error_t;
 ```
 
-### ❌ Избегайте
-```cpp
-// 1. Не используйте std::string в структурах
-struct BadData {
-    std::string message;  // ❌ Не trivially copyable
-};
+### Macros (Convenience)
+- `SHM_DEFAULT_CONFIG()`: 4MB default.
+- `SHM_CREATE_SERVER(name)`: Server with default.
+- `SHM_CONNECT_CLIENT(name)`: Client connect.
+- `SHM_SERVER_SEND(server, data, size)` / `SHM_CLIENT_SEND(...)`: Send.
+- `SHM_SERVER_RECEIVE(...)` / `SHM_CLIENT_RECEIVE(...)`: Receive.
+- `SHM_SERVER_ON_EVENT(server, cb, ud)` / `SHM_CLIENT_ON_EVENT(...)`: Register + start listener.
+- `SHM_SETUP_SERVER(name, cb, ud)` / `SHM_SETUP_CLIENT(...)`: Quick setup.
+- `SHM_SEND_STRUCT(endpoint, ptr)` / `SHM_RECV_STRUCT(endpoint, ptr)`: Generic for structs.
 
-// 2. Не забывайте проверять data
-on_data_received_sxc(client, [](const MyData* data) {
-    std::cout << data->message;  // ❌ Может быть nullptr
-});
+## Examples
 
-// 3. Не создавайте слишком много серверов с одинаковыми именами
-auto server1 = xshm::AsyncXSHM<Data>::create_server("app", 1024, config);
-auto server2 = xshm::AsyncXSHM<Data>::create_server("app", 1024, config);  // ❌ Конфликт
+Build and run from `build_x64/Release/` (or x86).
 
-// 4. Не игнорируйте проверки подключения
-client->send_to_server(data);  // ❌ Может не работать если не подключен
-```
+1. **Simple Echo Server/Client**:
+   ```batch
+   example_server.exe  // Starts server, waits for client
+   example_client.exe  // Connects, sends/receives
+   ```
 
-## 📈 Масштабируемость
+2. **Bi-Dir Stress Test** (100k msgs each way):
+   ```batch
+   test_server.exe     // Server waits for connect
+   test_client.exe     // Client connects, runs stress
+   ```
+   Outputs reports: `server_report.txt`, `test_log.txt`. Measures latency, throughput, loss.
 
-- ✅ Один сервер ↔ Множество клиентов
-- ✅ Высокочастотная передача данных
-- ✅ Большие объемы данных
-- ✅ Длительные сессии
-- ✅ Configurable limits для разных нагрузок
-- ✅ Thread pool для callback'ов
-- ✅ Batch processing для оптимизации
+3. **Mixed Arch Test**:
+   Run server x64: `example_mixed_arch.exe server`
+   Run client x86: `example_mixed_arch.exe` (in x86 build).
 
-## 📄 Документация
+## Performance
 
-- [xshm.hpp](xshm.hpp) - Полная документация API с Doxygen
-- [test/README.md](test/README.md) - Документация тестовой системы
-- [test/](test/) - Комплексные тесты производительности
+- **Latency**: <1ms round-trip (measured in stress test: avg 0.5ms median).
+- **Throughput**: Up to 100+ MB/s (stress: ~50 MB/s peak on i7).
+- **Overhead**: Minimal—atomic ops + events; no locks.
+- **Scalability**: Handles 10k+ msgs/s; overwriting prevents stalls.
+- Tested: 100k msgs bi-dir with <0.1% loss on 4MB buffers.
 
-## 🎉 Готовность к продакшену
+## Best Practices
 
-- ✅ **Enterprise-grade качество** - production-ready код
-- ✅ **Thread-safe архитектура** - безопасная работа в многопоточной среде
-- ✅ **Cross-compiler compatibility** - совместимость с Embarcadero C++ и Visual Studio
-- ✅ **Comprehensive error handling** - обработка ошибок во всех операциях
-- ✅ **Complete overflow protection** - защита от переполнения
-- ✅ **Symmetric activity tracking** - полный мониторинг
-- ✅ **Robust resource management** - автоматическое управление ресурсами
-- ✅ **Configurable behavior** - настройка под различные нагрузки
-- ✅ **Advanced features** - autoreconnect, activity tracking, performance counters
+- **Buffer Size**: Start with 4MB; scale for msg volume.
+- **Msg Limits**: <=64KB/msg; use overwriting for bursts.
+- **Events**: Use CONNECT/DISCONNECT for lifecycle; poll DATA_AVAILABLE sparingly.
+- **Errors**: Check `SHM_ERROR_EMPTY` for non-blocking; log others.
+- **Cleanup**: Always destroy/disconnect to decrement active_readers.
+- **Debug**: Enable printf in handlers; monitor buffer usage via `shm_ring_available()`.
 
-**XSHM v5.0.0 готов к использованию в enterprise production!** 🚀
+## Technical Details
 
-## 📜 Лицензия
+- **Memory**: FileMapping + MapViewOfFile; header + buffer layout.
+- **Sync**: Interlocked for positions/readers; MemoryBarrier; Events for notifies.
+- **Connect Detect**: Server polls tx_ring->active_readers (periodic + on send/recv).
+- **Overwriting**: Write always succeeds; drops oldest if full (CAS for read_pos advance).
+- **x86/x64**: Fixed types, no packing issues; tested mixed.
 
-MIT License
+## License
 
-## 🎯 Быстрый старт (краткая версия)
+Free for any use. No warranties. (MIT-like, but simplified.)
 
-```cpp
-#include "xshm.hpp"
+## Troubleshooting
 
-// Конфигурация
-xshm::XSHMConfig config;
-config.enable_logging = true;
-config.enable_auto_reconnect = true;
-config.enable_statistics = true;
+- **Connect Fail**: Run server first; check name match; admin if perms issue.
+- **No Events**: Ensure callback registered before connect; check timeout.
+- **High Loss**: Increase buffer; reduce msg rate; verify overwriting logic.
+- **Mixed Arch**: Rebuild both; same struct defs.
 
-// Сервер
-auto server = xshm::AsyncXSHM<MyData>::create_server("app", 1024, config);
-on_data_received_cxs(server, [](const MyData* data) { 
-    if (data) { /* обработка */ } 
-});
+## Contributing
 
-// Клиент  
-auto client = xshm::AsyncXSHM<MyData>::connect("app", config);
-on_data_received_sxc(client, [](const MyData* data) { 
-    if (data) { /* обработка */ } 
-});
+This is an open-source reference impl. Contributions welcome!
 
-// Отправка (асинхронная)
-MyData data;
-server->send_to_client(data);  // Сервер -> Клиент
-client->send_to_server(data);  // Клиент -> Сервер
-```
+- **Issues/PRs**: Report bugs, suggest features (e.g., Linux port, multi-client).
+- **Feedback**: Test on your hardware/use-case; share perf numbers.
+- **Help Wanted**: Docs, examples, optimizations—DM or open issue.
 
----
-
-*Версия: XSHM v5.0.0*  
-*Платформа: Windows x64*  
-*Компиляторы: Embarcadero C++ 7.80, Visual Studio 2019+*  
-<<<<<<< HEAD
-*Статус: Production Ready* ✅
-=======
-*Статус: Production Ready* ✅
->>>>>>> e64ea98cfb65c05cda8339fbbcefc05d8a9742c3
+Прошу обратную связь и помощь в развитии! (Feedback and collaboration appreciated—let's make it better together.) Reach out: [GitHub Issues](https://github.com/Platon/xSHM/issues).
