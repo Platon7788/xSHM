@@ -28,52 +28,71 @@ A cross-architecture (x86/x64) shared memory IPC library with lock-free overwrit
 - **Easy API**: Macros for structs, default configs; blocking/non-blocking reads.
 - **Thread-Safe**: Safe multi-threaded access per process.
 
-## Architecture
+## Project Structure
 
-### Core Components
-
-1. **Ring Buffer** (`shm_ringbuffer.c/h`)
-   - Overwriting circular buffer (power-of-2 size).
-   - Atomic positions (Interlocked ops); supports multiple readers.
-   - Header with active_readers for connection detection.
-   - Events for data/space (data always signaled on write).
-
-2. **Event System** (`shm_events.c/h`)
-   - Windows Events for signaling (DATA_AVAILABLE, SPACE_AVAILABLE, DISCONNECT, ERROR, CONNECT).
-   - Callback registration with auto-starting listener thread (100ms timeout).
-   - Periodic status checks on server for connect/disconnect.
-
-3. **IPC Layer** (`shm_ipc.c/h`)
-   - Server creates rings/events; client opens with retries.
-   - Auto-detection: Server monitors tx_ring->active_readers.
-   - Send ignores if not connected; receive always attempts.
+```
+xSHM/
+├── src/
+│   ├── shm_core.c          // IPC core (server/client logic)
+│   ├── shm_events.c        // Event system implementation
+│   └── shm_ringbuffer.c    // Ring buffer implementation
+├── include/
+│   ├── shm_types.h         // Core types and enums
+│   ├── shm_ringbuffer.h    // Ring buffer API
+│   ├── shm_events.h        // Event API
+│   └── shm_ipc.h           // Main IPC API (server/client)
+└── README.md               // This file
+```
 
 ## Building
 
 ### Prerequisites
 - Windows 10/11
-- Visual Studio 2019/2022 (C/C++ tools)
-- CMake 3.15+ (optional, for future builds)
+- Visual Studio 2019/2022 (C/C++ development tools)
+- CMake 3.15+ (recommended for building)
 
-### Build Scripts
-Run in project root:
+### Build Instructions
+Use Visual Studio or CMake to build the static library (`xSHM.lib`) and examples.
 
-#### All Architectures
-```batch
-build_all.bat
+#### Using Visual Studio (Manual)
+1. Create a new **Static Library (LIB)** project.
+2. Add source files: `src/shm_core.c`, `src/shm_events.c`, `src/shm_ringbuffer.c`.
+3. Add include directories: `./include`.
+4. Set platform: x86 or x64.
+5. Build: **Build > Build Solution**.
+
+#### Using CMake (Recommended)
+Create `CMakeLists.txt` in root:
+```cmake
+cmake_minimum_required(VERSION 3.15)
+project(xSHM C)
+
+add_library(xSHM STATIC
+    src/shm_core.c
+    src/shm_events.c
+    src/shm_ringbuffer.c
+)
+
+target_include_directories(xSHM PUBLIC include)
+
+# For x86/x64 builds, use separate configurations
 ```
 
-#### x64 Only
+Then:
 ```batch
-build_x64.bat
+mkdir build_x64 && cd build_x64
+cmake -A x64 ..
+cmake --build . --config Release
+cd ..
+
+mkdir build_x86 && cd build_x86
+cmake -A Win32 ..
+cmake --build . --config Release
 ```
 
-#### x86 Only
-```batch
-build_x86.bat
-```
+Outputs: `build_x64/Release/xSHM.lib` and `build_x86/Release/xSHM.lib`.
 
-Outputs: `build_x64/Release/` and `build_x86/Release/` (DLLs, EXEs, libs).
+Link against `xSHM.lib` in your apps (include `./include`).
 
 ## Quick Start
 
@@ -130,8 +149,7 @@ my_struct_t s = { .id = 42 };
 SHM_SEND_STRUCT(server, &s);  // Server/client generic
 
 my_struct_t r;
-uint32_t rsz = sizeof(r);
-SHM_RECV_STRUCT(server, &r);  // Updates rsz
+SHM_RECV_STRUCT(server, &r);  // Updates r.size implicitly
 ```
 
 ### Cleanup
@@ -209,24 +227,12 @@ typedef enum {
 
 ## Examples
 
-Build and run from `build_x64/Release/` (or x86).
+Include `xSHM.lib` and headers in your project. Basic usage shown in Quick Start.
 
-1. **Simple Echo Server/Client**:
-   ```batch
-   example_server.exe  // Starts server, waits for client
-   example_client.exe  // Connects, sends/receives
-   ```
+- **Simple Server/Client**: Compile with VS; run server first, then client.
+- **Stress Test**: Local examples (not in repo) measure bi-dir perf with 100k msgs.
 
-2. **Bi-Dir Stress Test** (100k msgs each way):
-   ```batch
-   test_server.exe     // Server waits for connect
-   test_client.exe     // Client connects, runs stress
-   ```
-   Outputs reports: `server_report.txt`, `test_log.txt`. Measures latency, throughput, loss.
-
-3. **Mixed Arch Test**:
-   Run server x64: `example_mixed_arch.exe server`
-   Run client x86: `example_mixed_arch.exe` (in x86 build).
+For full examples, see code snippets above or contact author for private repo access.
 
 ## Performance
 
